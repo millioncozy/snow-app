@@ -1,0 +1,6 @@
+{
+  "name": "제설대기 편성기",
+  "short_name": "제설",
+  "start_url": ".",
+  "display": "standalone"
+}
