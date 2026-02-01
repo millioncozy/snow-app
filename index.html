@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<link rel="manifest" href="manifest.json">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>제설대기 자동 편성기</title>
+<style>
+body { font-family: Arial; padding:20px; }
+table { border-collapse:collapse; margin-top:10px; }
+th,td { border:1px solid #aaa; padding:5px; text-align:center; }
+.holiday { background:#ffe0e0; }
+.snow { background:#e0f2ff; }
+</style>
+</head>
+<body>
+
+<h2>❄ 제설대기 자동 편성기</h2>
+
+<h3>눈 오는 날 선택 (월~금)</h3>
+<div id="snowDays"></div>
+
+<h3>신규 인원 등록</h3>
+계급
+<select id="rankInput">
+  <option>말년</option><option>병장</option><option>상병</option>
+  <option>일병</option><option>이병</option>
+</select>
+성명 <input id="nameInput">
+역할
+<select id="roleInput">
+  <option>토잉</option><option>장비</option><option>교육생</option>
+</select>
+1톤 <input type="checkbox" id="oneTonInput">
+<button onclick="addPerson()">추가</button>
+
+<h3>인원 목록 / 휴가 / 수정</h3>
+<table id="peopleTable"></table>
+
+<button onclick="generate()">자동 편성</button>
+
+<h3>편성 결과</h3>
+<div id="result"></div>
+
+<script>
+const days = ["월","화","수","목","금","토","일"];
+let snowDays = [];
+let people = [];
+let lastAssigned = {};
+
+function initSnowUI(){
+  const div=document.getElementById("snowDays");
+  days.slice(0,5).forEach(d=>{
+    div.innerHTML+=`
+      <label>
+        <input type="checkbox" onchange="toggleSnow('${d}')"> ${d}
+      </label>
+    `;
+  });
+}
+
+function toggleSnow(d){
+  snowDays = snowDays.includes(d)
+    ? snowDays.filter(x=>x!==d)
+    : [...snowDays,d];
+}
+
+function preset(){
+  [
+    ["말년","신의진","토잉",1],["말년","양수연","토잉",1],
+    ["상병","임성민","토잉",0],["상병","이민재","토잉",1],
+    ["일병","조정래","토잉",0],["일병","이다운","토잉",1],
+    ["일병","정기웅","토잉",1],
+    ["말년","허준석","장비",1],["일병","정세영","장비",0],
+    ["일병","이상훈","장비",0],["일병","박우성","장비",0]
+  ].forEach(p=>{
+    people.push({
+      rank:p[0], name:p[1], role:p[2],
+      oneTon:!!p[3], holiday:[]
+    });
+  });
+}
+
+function addPerson(){
+  const name=nameInput.value.trim();
+  if(!name) return alert("성명 입력");
+  people.push({
+    rank:rankInput.value,
+    name:name,
+    role:roleInput.value,
+    oneTon:oneTonInput.checked,
+    holiday:[]
+  });
+  nameInput.value="";
+  render();
+}
+
+function render(){
+  const t=document.getElementById("peopleTable");
+  t.innerHTML=`
+  <tr>
+    <th>계급</th><th>성명</th><th>역할</th><th>1톤</th>
+    ${days.map(d=>`<th>${d}</th>`).join("")}
+    <th>삭제</th>
+  </tr>`;
+  people.forEach((p,i)=>{
+    t.innerHTML+=`
+    <tr>
+      <td>${p.rank}</td>
+      <td>${p.name}</td>
+      <td>
+        <select onchange="people[${i}].role=this.value">
+          ${["토잉","장비","교육생"].map(r=>
+            `<option ${p.role===r?"selected":""}>${r}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <input type="checkbox" ${p.oneTon?"checked":""}
+          onchange="people[${i}].oneTon=this.checked">
+      </td>
+      ${days.map(d=>`
+        <td class="${p.holiday.includes(d)?"holiday":""}">
+          <input type="checkbox"
+            ${p.holiday.includes(d)?"checked":""}
+            onchange="toggleHoliday(${i},'${d}')">
+        </td>`).join("")}
+      <td><button onclick="remove(${i})">X</button></td>
+    </tr>`;
+  });
+}
+
+function toggleHoliday(i,d){
+  const h=people[i].holiday;
+  people[i].holiday = h.includes(d)?h.filter(x=>x!==d):[...h,d];
+  render();
+}
+
+function remove(i){ people.splice(i,1); render(); }
+function shuffle(a){ return [...a].sort(()=>Math.random()-0.5); }
+
+function generate(){
+  let out="";
+  lastAssigned={};
+
+  days.forEach((day,idx)=>{
+    let pool=people.filter(p=>!p.holiday.includes(day));
+    if(idx>0) pool=pool.filter(p=>lastAssigned[p.name]!==idx-1);
+
+    let tryPools=[];
+    if(snowDays.includes(day))
+      tryPools.push(pool.filter(p=>p.rank!=="말년"));
+    tryPools.push(pool);
+
+    let pick=null;
+    for(const list of tryPools){
+      const s=shuffle(list);
+      for(let i=0;i<s.length;i++){
+        for(let j=i+1;j<s.length;j++){
+          const a=s[i],b=s[j];
+          if((a.oneTon||b.oneTon)&&!(a.role==="토잉"&&b.role==="토잉")){
+            pick=[a,b]; break;
+          }
+        }
+        if(pick) break;
+      }
+      if(pick) break;
+    }
+
+    if(pick){
+      out+=`<b>${day}</b> : ${pick[0].name} / ${pick[1].name}<br>`;
+      lastAssigned[pick[0].name]=idx;
+      lastAssigned[pick[1].name]=idx;
+    }else{
+      out+=`<b>${day}</b> : 편성 불가<br>`;
+    }
+  });
+  result.innerHTML=out;
+}
+
+initSnowUI();
+preset();
+render();
+</script>
+
+</body>
+</html>
